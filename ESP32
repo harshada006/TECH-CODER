@@ -1,0 +1,153 @@
+#ifdef ENABLE_DEBUG
+       #define DEBUG_ESP_PORT Serial
+       #define NODEBUG_WEBSOCKETS
+       #define NDEBUG
+#endif 
+
+#include <Arduino.h>
+#include <WiFi.h>
+#include "SinricPro.h"
+#include "SinricProSwitch.h"
+
+#include <map>
+char WIFI_SSID[] = "Wokwi-GUEST";
+char WIFI_PASS[] = "";
+// #define WIFI_SSID         "Wokwi-GUEST"    
+// #define WIFI_PASS         ""
+#define APP_KEY1          "824a4f64-f235-46c1-a64d-8054fffad3e0"      // Should look like "de0bxxxx-1x3x-4x3x-ax2x-5dabxxxxxxxx"
+#define APP_SECRET1        "fecbf8b5-e4fa-44af-9322-737d465c3d7e-acafc2a3-610b-4e99-90b1-dd085d407523"   // Should look like "5f36xxxx-x3x7-4x3x-xexe-e86724a9xxxx-4c4axxxx-3x3x-x5xe-x9x3-333d65xxxxxx"
+
+#define APP_KEY2           "90b28739-35de-4eac-8235-4a50b92aa00f"    // Should look like "de0bxxxx-1x3x-4x3x-ax2x-5dabxxxxxxxx"
+#define APP_SECRET2        "f3eaf4bc-0ab8-4329-bce8-07ddcd228f7d-2f792cf2-1071-475a-a5a7-9b25c7ef695c"
+
+//Enter the device IDs here
+#define device_ID_1   "650da0f429a3affd7991fe3c"
+#define device_ID_2   "650da13629a3affd7991fe7a"
+#define device_ID_3   "650da1535be44b141b54b9a5"
+
+#define device_ID_4   "650dc37929a3affd799210e0"
+#define device_ID_5   "650dc2e35be44b141b54caaa"
+#define device_ID_6   "650dc35629a3affd799210b7"
+
+// define the GPIO connected with Relays and switches
+#define RelayPin1 14  //D23
+#define RelayPin2 27  //D22
+#define RelayPin3 26  //D21
+#define RelayPin4 25  //D23
+#define RelayPin5 33  //D22
+#define RelayPin6 32
+
+#define wifiLed   2   //D2
+
+// comment the following line if you use a toggle switches instead of tactile buttons
+//#define TACTILE_BUTTON 1
+
+#define BAUD_RATE   9600
+
+#define DEBOUNCE_TIME 250
+
+typedef struct {      // struct for the std::map below
+  int relayPIN;
+} deviceConfig_t;
+
+// this is the main configuration
+// please put in your deviceId, the PIN for Relay and PIN for flipSwitch
+// this can be up to N devices...depending on how much pin's available on your device ;)
+// right now we have 4 devicesIds going to 4 relays and 4 flip switches to switch the relay manually
+std::map<String, deviceConfig_t> devices = {
+    //{deviceId, {relayPIN,  flipSwitchPIN}}
+    {device_ID_1, {  RelayPin1 }},
+    {device_ID_2, {  RelayPin2 }},
+    {device_ID_3, {  RelayPin3 }},   
+    {device_ID_4, {  RelayPin4 }},
+    {device_ID_5, {  RelayPin5 }},
+    {device_ID_6, {  RelayPin6 }},  
+};
+
+typedef struct {      // struct for the std::map below
+  String deviceId;
+} flipSwitchConfig_t;
+
+   // this map is used to map flipSwitch PINs to deviceId and handling debounce and last flipSwitch state checks
+                                                  // it will be setup in "setupFlipSwitches" function, using informations from devices map
+
+void setupRelays() { 
+  for (auto &device : devices) {           // for each device (relay, flipSwitch combination)
+    int relayPIN = device.second.relayPIN; // get the relay pin
+    pinMode(relayPIN, OUTPUT);             // set relay pin to OUTPUT
+    digitalWrite(relayPIN, LOW);
+  }
+}
+
+bool onPowerState(String deviceId, bool &state)
+{
+  Serial.printf("%s: %s\r\n", deviceId.c_str(), state ? "on" : "off");
+  int relayPIN = devices[deviceId].relayPIN; // get the relay pin for corresponding device
+  digitalWrite(relayPIN, state);             // set the new relay state
+  return true;
+}
+
+void setupWiFi()
+{
+  Serial.printf("\r\n[Wifi]: Connecting");
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.printf(".");
+    delay(250);
+  }
+  digitalWrite(wifiLed, HIGH);
+  Serial.printf("connected!\r\n[WiFi]: IP-Address is %s\r\n", WiFi.localIP().toString().c_str());
+}
+
+void setupSinricPro1()
+{
+  for (auto &device : devices)
+  {
+    int x = 1;
+    while(x!=4){
+    const char *y = "device_ID_"+x;
+    SinricProSwitch &mySwitch = SinricPro[y];
+    Serial.printf(y);
+    mySwitch.onPowerState(onPowerState);
+    x++;
+    }
+  }
+    SinricPro.begin(APP_KEY1, APP_SECRET1);
+  SinricPro.restoreDeviceStates(true);
+}
+void setupSinricPro2()
+{
+  for (auto &device : devices)
+  {
+    int x = 4;
+    while(x!=7){
+    const char *y = "device_ID_"+x;
+    SinricProSwitch &mySwitch = SinricPro[y];
+    Serial.printf(y);
+    mySwitch.onPowerState(onPowerState);
+    x++;
+    }
+  }
+    SinricPro.begin(APP_KEY2, APP_SECRET2);
+  SinricPro.restoreDeviceStates(true);
+}
+
+void setup()
+{
+  Serial.begin(BAUD_RATE);
+
+  pinMode(wifiLed, OUTPUT);
+  digitalWrite(wifiLed, LOW);
+
+  setupRelays();
+  setupWiFi();
+  setupSinricPro1();
+  setupSinricPro2();
+}
+
+void loop()
+{
+  SinricPro.handle();
+}
